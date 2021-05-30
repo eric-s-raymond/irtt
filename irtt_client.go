@@ -40,6 +40,8 @@ func clientUsage() {
 	printf("-Q             really quiet, suppress all output except errors to stderr")
 	printf("-n             no test, connect to the server and validate test parameters")
 	printf("               but don't run the test")
+	printf("-c             log in CSV")
+	printf("-j             log in JSON")
 	printf("--stats=stats  server stats on received packets (default %s)", DefaultReceivedStats.String())
 	printf("               none: no server stats on received packets")
 	printf("               count: total count of received packets")
@@ -156,6 +158,8 @@ func runClientCLI(args []string) {
 	var intervalStr = fs.StringP("i", "i", DefaultInterval.String(), "send interval")
 	var length = fs.IntP("l", "l", DefaultLength, "packet length")
 	var noTest = fs.BoolP("n", "n", false, "no test")
+	var logCSV = fs.BoolP("c", "c", false, "log in CSV")
+	var logJSON = fs.BoolP("j", "j", false, "log in JSON")
 	var rsStr = fs.String("stats", DefaultReceivedStats.String(), "received stats")
 	var tsatStr = fs.String("tstamp", DefaultStampAt.String(), "stamp at")
 	var clockStr = fs.String("clock", DefaultClock.String(), "clock")
@@ -296,6 +300,7 @@ func runClientCLI(args []string) {
 	cfg.LocalAddress = *laddrStr
 	cfg.RemoteAddress = raddrStr
 	cfg.OpenTimeouts = timeouts
+	cfg.LogCSV = true
 	cfg.NoTest = *noTest
 	cfg.Duration = duration
 	cfg.Interval = interval
@@ -314,7 +319,7 @@ func runClientCLI(args []string) {
 	cfg.Filler = filler
 	cfg.FillOne = *fillOne
 	cfg.HMACKey = hmacKey
-	cfg.Handler = &clientHandler{*quiet, *reallyQuiet}
+	cfg.Handler = &clientHandler{*quiet, *reallyQuiet, *logCSV, *logJSON}
 	cfg.ThreadLock = *threadLock
 
 	// run test
@@ -460,41 +465,77 @@ func writeResultJSON(r *Result, output string, cancelled bool) error {
 type clientHandler struct {
 	quiet       bool
 	reallyQuiet bool
+	logCSV      bool
+	logJSON     bool
 }
 
 func (c *clientHandler) OnSent(seqno Seqno, rtd *RoundTripData) {
 }
 
 func (c *clientHandler) OnReceived(seqno Seqno, rtd *RoundTripData,
-	prtd *RoundTripData, late bool, dup bool) {
+	prtd *RoundTripData, dup bool) {
+	if c.logCSV {
+		if seqno == 0 {
+			printf("seq,rd,sd,seq,rtt,ipdv,late")
+		}
+	}
 	if !c.reallyQuiet {
-		if dup {
+		if dup && !(c.logCSV || c.logJSON) {
 			printf("DUP! seq=%d", seqno)
 			return
 		}
 
 		if !c.quiet {
-			ipdv := "n/a"
-			if prtd != nil {
-				dv := rtd.IPDVSince(prtd)
-				if dv != InvalidDuration {
-					ipdv = rdur(AbsDuration(dv)).String()
+			cdur := func(dur time.Duration) string {
+				out := "nil"
+				if dur != InvalidDuration {
+					out = fmt.Sprintf("%d", dur*time.Nanosecond)
 				}
+				return out
 			}
-			rd := ""
-			if rtd.ReceiveDelay() != InvalidDuration {
-				rd = fmt.Sprintf(" rd=%s", rdur(rtd.ReceiveDelay()))
+			if c.logCSV {
+				dv := InvalidDuration
+				if prtd != nil {
+					dv = rtd.IPDVSince(prtd)
+				}
+				printf("%d, %d, %s, %s, %v, %v",
+					seqno, rtd.RTT(),
+					cdur(rtd.ReceiveDelay()), cdur(rtd.SendDelay()),
+					cdur(AbsDuration(dv)),
+					rtd.Late)
+			} else if c.logJSON {
+				dv := InvalidDuration
+				if prtd != nil {
+					dv = rtd.IPDVSince(prtd)
+				}
+				printf(`{"seq":%d, "rtt":%d, "rd":%s, "sd":%s, "ipdv":%s, "late":%v}`,
+					seqno, rtd.RTT(),
+					cdur(rtd.ReceiveDelay()), cdur(rtd.SendDelay()),
+					cdur(AbsDuration(dv)),
+					rtd.Late)
+			} else {
+				ipdv := "n/a"
+				if prtd != nil {
+					dv := rtd.IPDVSince(prtd)
+					if dv != InvalidDuration {
+						ipdv = rdur(AbsDuration(dv)).String()
+					}
+				}
+				rd := ""
+				if rtd.ReceiveDelay() != InvalidDuration {
+					rd = fmt.Sprintf(" rd=%s", rdur(rtd.ReceiveDelay()))
+				}
+				sd := ""
+				if rtd.SendDelay() != InvalidDuration {
+					sd = fmt.Sprintf(" sd=%s", rdur(rtd.SendDelay()))
+				}
+				sl := ""
+				if rtd.Late {
+					sl = " (LATE)"
+				}
+				printf("seq=%d rtt=%s%s%s ipdv=%s%s", seqno, rdur(rtd.RTT()),
+					rd, sd, ipdv, sl)
 			}
-			sd := ""
-			if rtd.SendDelay() != InvalidDuration {
-				sd = fmt.Sprintf(" sd=%s", rdur(rtd.SendDelay()))
-			}
-			sl := ""
-			if late {
-				sl = " (LATE)"
-			}
-			printf("seq=%d rtt=%s%s%s ipdv=%s%s", seqno, rdur(rtd.RTT()),
-				rd, sd, ipdv, sl)
 		}
 	}
 }

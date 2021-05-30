@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## Unreleased
 
+- JSON output format for client logging (-j option)
+- CSV output format for client logging (-c option)
+
 ## 0.9.1 - 2021-05-18
 
 ### Added

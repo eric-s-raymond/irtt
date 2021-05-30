@@ -30,6 +30,14 @@ irtt client [*args*]
     - 1472 (max unfragmented size of IPv4 datagram for 1500 byte MTU)
     - 1452 (max unfragmented size of IPv6 datagram for 1500 byte MTU)
 
+-c
+:   Do progress logging to stdout as CSV using units of nanoseconds with one leading line of headers
+    and "nil" as a data-not-available marker.
+
+-j
+:   Do progress logging to stdout as JSON in units of nanoseconds with "nil" as a data-not-available
+    marker.
+
 -o *file*
 :   Write JSON output to file (use '-' for stdout).  The extension used for
     *file* controls the gzip behavior as follows (output to stdout is not
